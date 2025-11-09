@@ -1,0 +1,11 @@
+
+{
+  "name": "trade-composer",
+  "private": true,
+  "workspaces": ["apps/web", "packages/*"],
+  "scripts": {
+    "dev:web": "pnpm --filter @apps/web dev",
+    "typecheck": "tsc -b -v",
+    "build": "pnpm -r build"
+  }
+}

@@ -6,21 +6,20 @@ This is a ready-to-run scaffold for the **Trade Composer** platform.
 ## Quick start
 
 ### Requirements
-- Node 18+ and **pnpm**
+- Node 18+ and **npm**
 - Python 3.11+
 - (Optional) Docker for ClickHouse/Redis
 
 ### Run
-1) Install deps for TS workspaces
+1) Install dependencies
 ```bash
-pnpm install
+npm install
 ```
-2) Start the Partner API
+2) Start the Partner API (in a separate terminal)
 ```bash
 uvicorn apps.partner-api.main:app --reload --host 0.0.0.0 --port 8080
 ```
-3) Start the Web app (set API URL in env)
+3) Start the Web app (in a separate terminal)
 ```bash
-export PARTNER_API_URL=http://localhost:8080
-pnpm dev:web
+npm run dev
 ```

@@ -1,13 +1,10 @@
 {
+  "emulators": {
+    "hub":      { "host": "127.0.0.1", "port": 4400 },
+    "logging":  { "host": "127.0.0.1", "port": 4500 },
+    "apphosting": { "host": "127.0.0.1", "port": 5002 }
+  },
   "apphosting": {
-    "backendId": "tradecomposer",
-    "rootDir": "/",
-    "ignore": [
-      "node_modules",
-      ".git",
-      "firebase-debug.log",
-      "firebase-debug.*.log",
-      "functions"
-    ]
+    "run": { "devCommand": "npm run dev" }
   }
 }

@@ -1,4 +1,14 @@
-
-{ "name": "@packages/types", "version": "0.1.0", "type": "module",
-  "main": "dist/index.js", "types": "dist/index.d.ts",
-  "scripts": { "build": "tsc -p tsconfig.json" } }
+{
+  "name": "@packages/types",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "pnpm build --watch"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.2"
+  }
+}

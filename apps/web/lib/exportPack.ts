@@ -1,7 +1,7 @@
 
 import { idbGet } from './idb';
 import { hashString } from './hash';
-import { loadGateConfig } from '../lib/policyPresets';
+import { loadGateConfig, loadOrgPolicy, loadSessionConfig } from '../lib/policyPresets';
 
 const PRESETS_KEY = 'tc.composer.presets.v1';
 const SIM_KEY = 'tc.sim.last';
@@ -35,13 +35,15 @@ export async function exportPack(){
   const scope = (window as any).__TC_SCOPE || null;
   const risk = (window as any).__TC_RISK || null;
   const plan = (window as any).__TC_PLAN || null;
+  const sessionId = (window as any).__TC_SESSIONID || null;
   let queue: any = null; try{ const r = await fetch('/api/queue'); queue = await r.json(); }catch{}
 
-  // NEW: gate presets export
-  let gate = null;
-  try { gate = loadGateConfig(); } catch {}
+  // policy
+  const userGate = loadGateConfig();
+  const orgGate = loadOrgPolicy();
+  const sessionGate = sessionId ? loadSessionConfig(sessionId) : null;
 
-  const body = { journal: { items: journal }, presets, env, scope, risk, plan, sim: sim?.result || sim, queue, frames, ladder: sim?.result?.book || sim?.book || { bids:[], asks:[] }, reasons, gate };
+  const body = { journal: { items: journal }, presets, env, scope, risk, plan, sim: sim?.result || sim, queue, frames, ladder: sim?.result?.book || sim?.book || { bids:[], asks:[] }, reasons, userGate, orgGate, sessionGate, sessionId };
   const r = await fetch('/api/export', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   const blob = await r.blob();
   const a = document.createElement('a');

@@ -6,14 +6,13 @@ import { useRisk } from "../contexts/RiskContext";
 type Guardrails = { dailyCapUsd:number; slipCapBps:number; killGapBps:number };
 type Policy = { sizePct:number; slipCapBps:number; ttlMs:number };
 
-export default function Executor({ rNow, onReview }:{ rNow:number; onReview:(intent:any)=>void }){
+export default function Executor({ rNow, onReview, onSim }:{ rNow:number; onReview:(intent:any)=>void; onSim:(intent:any)=>void }){
   const { knobs } = useRisk();
   const rails: Guardrails = { dailyCapUsd: 5000, slipCapBps: 12, killGapBps: 30 };
   const slipKnob = knobs.find(k=>k.id==='slipCap')!.value;
   const ttlKnob  = knobs.find(k=>k.id==='ttl')!.value;
 
   const policy: Policy = useMemo(()=>{
-    // simple mapping from rNow (0..1.2) to size% (0.5%..5%)
     const sizePct = clamp(0.5 + (rNow*4), 0.5, 5.0);
     const slipCapBps = Math.min(rails.slipCapBps, slipKnob);
     const ttlMs = Math.max(400, Math.min(1500, ttlKnob));
@@ -23,16 +22,18 @@ export default function Executor({ rNow, onReview }:{ rNow:number; onReview:(int
   const breachSlip = slipKnob > rails.slipCapBps;
   const [side, setSide] = useState<"buy"|"sell">("buy");
 
-  function emitReview(){
-    const intent = {
+  function currentIntent(){
+    return {
       type: "replace_only_quote",
       side,
       size_pct: policy.sizePct,
       slip_cap_bps: policy.slipCapBps,
       ttl_ms: policy.ttlMs
     };
-    onReview(intent);
   }
+
+  function emitReview(){ onReview(currentIntent()); }
+  function emitSim(){ onSim(currentIntent()); }
 
   return (
     <div style={{ border:"1px solid #eee", borderRadius:12, padding:12 }}>
@@ -64,9 +65,14 @@ export default function Executor({ rNow, onReview }:{ rNow:number; onReview:(int
         </div>
         <div style={{ fontSize:12, opacity:.6 }}>Daily Cap (USD)</div>
         <div style={{ fontWeight:600 }}>${rails.dailyCapUsd.toLocaleString()}</div>
-        <button onClick={emitReview} style={{ marginLeft:'auto', padding:'8px 12px', borderRadius:8, background:'#111827', color:'#fff' }}>
-          Review Packet
-        </button>
+        <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+          <button onClick={emitReview} style={{ padding:'8px 12px', borderRadius:8, background:'#111827', color:'#fff' }}>
+            Review
+          </button>
+          <button onClick={emitSim} style={{ padding:'8px 12px', borderRadius:8, background:'#059669', color:'#fff' }}>
+            Simulate
+          </button>
+        </div>
       </div>
     </div>
   );

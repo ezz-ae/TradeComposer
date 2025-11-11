@@ -4,8 +4,9 @@ from pydantic import BaseModel
 import asyncio, time
 
 from . import ticks
+from .sim_quoter import OrderBook, simulate_quote
 
-app = FastAPI(title="Trade Composer Partner API (mock feed + matcher)")
+app = FastAPI(title="Trade Composer Partner API (mock feed + matcher + quoter sim)")
 
 bg_task = None
 @app.on_event("startup")
@@ -27,13 +28,19 @@ def assert_pro(x_device_lease: str | None, x_role: str | None):
 class PlanIn(BaseModel):
     symbol: str
 
+class QuoteIn(BaseModel):
+    side: str
+    size_pct: float
+    slip_cap_bps: float
+    ttl_ms: int
+    equity_usd: float = 10000.0  # simple equity assumption
+
 @app.get("/health")
 def health():
     return {"ok": True, "sessions": list(ticks.ENGINE.sessions.keys())}
 
 @app.post("/api/plan")
 def plan(inp: PlanIn):
-    # simple synthetic levels, unchanged
     return {
       "symbol": inp.symbol,
       "regime": {"trend":"up","vol":"normal","bias":"bullish-pullback"},
@@ -85,3 +92,12 @@ async def ws_state(ws: WebSocket, sid: str):
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         return
+
+@app.post("/api/sim/quote")
+def sim_quote(body: QuoteIn):
+    # use last price from session 'demo' as mid, else default to 100
+    s = ticks.ENGINE.get_or_create("demo", "BTCUSD")
+    mid = s.last_n(1)[0] if s.last_n(1) else 100.0
+    book = OrderBook(mid=mid, spread_bps=2.0, depth_levels=10)
+    size_usd = max(1.0, body.equity_usd * (body.size_pct/100.0))
+    return simulate_quote(body.side, size_usd, body.slip_cap_bps, body.ttl_ms, book)

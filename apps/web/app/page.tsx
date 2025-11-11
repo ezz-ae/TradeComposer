@@ -12,6 +12,7 @@ import ReviewOverlay from "../components/ReviewOverlay";
 import Journal from "../components/Journal";
 import Guardrails from "../components/Guardrails";
 import PrioritizeQueue from "../components/PrioritizeQueue";
+import QuoterSim from "../components/QuoterSim";
 import { useJournal } from "../hooks/useJournal";
 import { ToasterProvider, useToast } from "../components/Toaster";
 import { RiskProvider } from "../contexts/RiskContext";
@@ -20,6 +21,7 @@ function PageInner(){
   const [plan, setPlan] = useState<any>(null);
   const [symbol, setSymbol] = useState("BTCUSD");
   const [reviewIntent, setReviewIntent] = useState<any>(null);
+  const [simHook] = useState(()=> QuoterSim()); // stable hook-like factory
   const live = useSessionWS("demo");
   const toast = useToast();
   const J = useJournal();
@@ -114,7 +116,7 @@ function PageInner(){
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginTop: 16 }}>
-        <Executor rNow={scopeData ? scopeData.r : 0.5} onReview={setReviewIntent} />
+        <Executor rNow={scopeData ? scopeData.r : 0.5} onReview={setReviewIntent} onSim={simHook.simulate} />
         <PrioritizeQueue />
       </div>
 
@@ -122,9 +124,10 @@ function PageInner(){
         <Composer baseExpected={scopeData ? scopeData.expected : null} />
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginTop: 16 }}>
         <Journal items={J.items} replay={J.replay} setReplay={J.setReplay}
           replayIndex={J.replayIndex} setReplayIndex={J.setReplayIndex} onExport={J.exportJSON} />
+        {simHook.view}
       </div>
 
       <ReviewOverlay intent={reviewIntent} onClose={()=>setReviewIntent(null)} />

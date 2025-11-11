@@ -1,0 +1,25 @@
+
+runConfig:
+  cpu: 1
+  memoryMiB: 1024
+  minInstances: 0
+  maxInstances: 3
+  concurrency: 80
+  timeoutSeconds: 120
+  serviceAccount: default
+
+build:
+  command: |
+    npm i -g pnpm && pnpm install && pnpm --filter web build
+
+run:
+  command: node apps/web/node_modules/next/dist/bin/next start -p 8080
+  env:
+    - key: NEXT_PUBLIC_PARTNER_API_URL
+      value: https://your-api.example.com
+    - key: NEXT_PUBLIC_PARTNER_API_ROLE
+      value: pro
+    - key: NEXT_PUBLIC_PARTNER_API_DEVICE_LEASE
+      value: dev-lease-demo
+ports:
+  - 8080

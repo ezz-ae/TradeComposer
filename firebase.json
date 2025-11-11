@@ -3,16 +3,16 @@
   "emulators": {
     "hub": { "port": 4400, "host": "127.0.0.1" },
     "logging": { "port": 4500, "host": "127.0.0.1" },
-    "apphosting": {
-      "port": 5002,
-      "host": "127.0.0.1",
+    "apphosting": { "port": 5002, "host": "127.0.0.1",
       "devModeHandle": {
         "command": "npm",
         "args": ["run", "dev"],
-        "env": {
-          "PORT": "3000"
-        }
+        "env": { "PORT": "3000" }
       }
     }
-  }
+  },
+  "hosting": [{
+    "source": "apps/web",
+    "frameworksBackend": { "region": "us-central1" }
+  }]
 }

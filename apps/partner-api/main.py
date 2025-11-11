@@ -3,7 +3,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPExcepti
 import asyncio, time, math
 from pydantic import BaseModel
 
-app = FastAPI()
+app = FastAPI(title="Trade Composer Partner API")
 
 SESSIONS = {}
 
@@ -20,7 +20,6 @@ def health():
 
 @app.post("/api/plan")
 def plan(inp: PlanIn):
-    # tiny deterministic plan
     return {
       "symbol": inp.symbol,
       "regime": {"trend":"up","vol":"normal","bias":"bullish-pullback"},

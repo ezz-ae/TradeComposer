@@ -1,13 +1,10 @@
 
 {
   "name": "trade-composer",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
   "packageManager": "pnpm@10.20.0",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": ["apps/*","packages/*"],
   "scripts": {
     "dev": "pnpm --filter web dev",
     "dev:web": "pnpm --filter web dev",

@@ -2,11 +2,20 @@
 "use client";
 import { useCallback, useEffect, useState } from 'react';
 import { evaluateGate, type GateDecision } from '@/app/lib/policy';
+import { loadGateConfig, saveGateConfig, DEFAULT_PRESETS } from '@/app/lib/policyPresets';
 
 export function usePolicyGate(riskKnobs:any[], scope:any){
-  const [decision, setDecision] = useState<GateDecision>({ blockForce:false, reasons:[], warnings:[], info:[] });
+  const [decision, setDecision] = useState<GateDecision>({ blockForce:false, reasons:[], warnings:[], info:[], thresholds: { slipCapMaxBps:12, killGapMaxBps:30 } });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [config, setConfig] = useState(loadGateConfig());
+
+  function setPreset(id: string){
+    const next = { ...config, activePresetId: id };
+    saveGateConfig(next);
+    setConfig(next);
+    refresh(); // re-evaluate
+  }
 
   const rails = {
     slipCapBps: Number(riskKnobs?.find?.((k:any)=>k.id==='slipCap')?.value ?? 0),
@@ -26,9 +35,9 @@ export function usePolicyGate(riskKnobs:any[], scope:any){
     }finally{
       setLoading(false);
     }
-  }, [JSON.stringify(riskKnobs), JSON.stringify(scope)]);
+  }, [JSON.stringify(riskKnobs), JSON.stringify(scope), config.activePresetId]);
 
   useEffect(()=>{ refresh(); }, [refresh]);
 
-  return { decision, loading, error, refresh };
+  return { decision, loading, error, refresh, config, setPreset, presets: config.presets };
 }

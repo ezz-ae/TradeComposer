@@ -1,18 +1,16 @@
 
 {
-  "emulators": {
-    "hub": { "port": 4400, "host": "127.0.0.1" },
-    "logging": { "port": 4500, "host": "127.0.0.1" },
-    "apphosting": { "port": 5002, "host": "127.0.0.1",
-      "devModeHandle": {
-        "command": "npm",
-        "args": ["run", "dev"],
-        "env": { "PORT": "3000" }
-      }
-    }
-  },
   "hosting": [{
-    "source": "apps/web",
-    "frameworksBackend": { "region": "us-central1" }
-  }]
+    "target": "app",
+    "public": "apps/web/out",
+    "ignore": ["**/.*", "**/node_modules/**"],
+    "headers": [{
+      "source": "**/*.@(js|css)",
+      "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000,immutable" }]
+    }]
+  }],
+  "emulators": {
+    "firestore": { "port": 8085, "host": "127.0.0.1" },
+    "hosting": { "port": 5000, "host": "127.0.0.1" }
+  }
 }

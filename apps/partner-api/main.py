@@ -1,136 +1,154 @@
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException
-from fastapi.responses import JSONResponse
+import os, time, hmac, hashlib, json, asyncio
+from typing import Optional, Dict, Any
+from fastapi import FastAPI, Request, HTTPException, Depends
 from pydantic import BaseModel
-import asyncio, time
+import firebase_admin
+from firebase_admin import auth, credentials
+from google.cloud import firestore
+from .secrets import gsm_store, gsm_access, kms_encrypt, kms_decrypt
+from .exchanges import make_exchange, get_balances, market_buy, market_sell
 
-from . import ticks
-from .sim_quoter import OrderBook, simulate_quote
-from .queue import BUS
+PROJECT_ID = os.getenv("GCLOUD_PROJECT") or os.getenv("FIREBASE_PROJECT_ID")
+COINBASE_WEBHOOK_SECRET = os.getenv("COINBASE_COMMERCE_SECRET", "")
 
-app = FastAPI(title="Trade Composer Partner API (mock feed + matcher + quoter sim + queue)")
-
-bg_task = None
-@app.on_event("startup")
-async def _startup():
-    global bg_task
-    if bg_task is None:
-        loop = asyncio.get_event_loop()
-        bg_task = loop.create_task(ticks.ENGINE.run())
-
-@app.on_event("shutdown")
-async def _shutdown():
-    global bg_task
-    if bg_task: bg_task.cancel()
-
-def assert_pro(x_device_lease: str | None, x_role: str | None):
-    if x_role != "pro": raise HTTPException(status_code=403, detail="pro role required")
-    if not x_device_lease: raise HTTPException(status_code=401, detail="device lease missing")
-
-class PlanIn(BaseModel):
-    symbol: str
-
-class QuoteIn(BaseModel):
-    side: str
-    size_pct: float
-    slip_cap_bps: float
-    ttl_ms: int
-    equity_usd: float = 10000.0
-
-@app.get("/health")
-def health():
-    return {"ok": True, "sessions": list(ticks.ENGINE.sessions.keys())}
-
-@app.post("/api/plan")
-def plan(inp: PlanIn):
-    return {
-      "symbol": inp.symbol,
-      "regime": {"trend":"up","vol":"normal","bias":"bullish-pullback"},
-      "levels": [{"type":"pd_high","price":67320.0},{"type":"ema200_h1","price":66240.5}],
-      "tasks": [
-        {"id":"AL-1","type":"alert","desc":"Approach EMA200(H1) ±10bps","trigger":{"operator":"within_bps","bps":10,"price":66240.5},"priority":"high","expires":"session_close"},
-        {"id":"OP-1","type":"order","desc":"SAR on break of PD High","order":{"intent":"stop_and_reverse","trigger":{"op":">=","price":67320.0},"open":{"side":"buy","size":"risk_1R"},"sl":{"basis":"swing_low","buffer_bps":15},"tp":{"rr":2.0}},"priority":"high"}
-      ]
-    }
-
-@app.post("/api/sessions")
-def create_session(body: dict):
-    sid = body.get("id","demo")
-    symbol = body.get("symbol","BTCUSD")
-    s = ticks.ENGINE.get_or_create(sid, symbol)
-    return {"id": sid, "symbol": s.symbol, "started_at": time.time()}
-
-@app.get("/api/sessions/{sid}/state")
-def session_state(sid: str):
-    s = ticks.ENGINE.get_or_create(sid, "BTCUSD")
-    snap = s.scope_snapshot()
-    return {
-        "id": sid,
-        "symbol": s.symbol,
-        "regime": {"trend": "up", "vol": "normal", "bias": "bullish-pullback"},
-        "confidence": snap["confidence"],
-        "r": snap["r"],
-        "metrics": {"n_ticks": len(s.ticks)}
-    }
-
-@app.post("/api/sessions/{sid}/orders")
-def orders_guarded(sid: str, body: dict, x_device_lease: str | None = Header(None), x_role: str | None = Header(None)):
-    assert_pro(x_device_lease, x_role)
-    mode = body.get("mode")
-    if mode == "review": return {"ok": True, "review_packet": {"sid": sid, "intent": body.get("intent")}}
-    if mode == "test": return {"ok": True, "queued": True, "mode": "test", "size_pct": 0.03, "reason": body.get("reason")}
-    if mode == "prioritize": return {"ok": True, "queued": True, "mode": "prioritize", "reason": body.get("reason")}
-    if mode == "force": return {"ok": True, "committed": True, "mode": "force", "reason": body.get("reason")}
-    return {"ok": False, "error": "invalid_mode"}
-
-@app.websocket("/ws/sessions/{sid}/state")
-async def ws_state(ws: WebSocket, sid: str):
-    await ws.accept()
-    s = ticks.ENGINE.get_or_create(sid, "BTCUSD")
+if not firebase_admin._apps:
     try:
-        while True:
-            snap = s.scope_snapshot()
-            await ws.send_json(snap)
-            await asyncio.sleep(0.5)
-    except WebSocketDisconnect:
-        return
+        firebase_admin.initializeApp()
+    except:
+        firebase_admin.initialize_app()
 
-@app.post("/api/sim/quote")
-def sim_quote(body: QuoteIn):
-    s = ticks.ENGINE.get_or_create("demo", "BTCUSD")
-    mid = s.last_n(1)[0] if s.last_n(1) else 100.0
-    book = OrderBook(mid=mid, spread_bps=2.0, depth_levels=10)
-    size_usd = max(1.0, body.equity_usd * (body.size_pct/100.0))
-    return simulate_quote(body.side, size_usd, body.slip_cap_bps, body.ttl_ms, book)
+db = firestore.Client(project=PROJECT_ID)
 
-# ---- Queue API (with context) ----
-@app.get("/api/queue")
-def queue_list():
-    return {"ok": True, "items": BUS.items[-100:]}
+class LinkExchange(BaseModel):
+    orgId: str
+    userId: str
+    kind: str             # binance|okx|bybit
+    label: str
+    apiKey: str
+    secret: str
+    password: Optional[str] = None
+    sandbox: bool = False
 
-@app.post("/api/queue")
-def queue_enqueue(body: dict):
-    mode = body.get("mode","test")
-    symbol = body.get("symbol","BTCUSD")
-    why = body.get("why","manual")
-    ctx = body.get("context") or {}
-    it = BUS.enqueue(mode, symbol, why, ctx)
-    return {"ok": True, "item": it}
+class TradeReq(BaseModel):
+    orgId: str
+    userId: str
+    connId: str
+    side: str             # buy|sell
+    symbol: str           # e.g., BTC/USDT
+    amount: float
 
-@app.patch("/api/queue/{qid}")
-def queue_patch(qid: str, body: dict):
-    it = BUS.patch(qid, body.get("action","promote"))
-    if not it: return JSONResponse({"ok": False, "error":"not_found"}, status_code=404)
-    return {"ok": True, "item": it}
-
-@app.websocket("/ws/queue")
-async def ws_queue(ws: WebSocket):
-    await ws.accept()
-    q = BUS.subscribe()
+async def verify(request: Request):
+    authz = request.headers.get("Authorization","")
+    if not authz.startswith("Bearer "): raise HTTPException(401, "missing token")
+    token = authz.split(" ",1)[1]
     try:
-        while True:
-            msg = await q.get()
-            await ws.send_json(msg)
-    except WebSocketDisconnect:
-        BUS.unsubscribe(q)
-        return
+        return auth.verify_id_token(token)
+    except Exception:
+        raise HTTPException(401, "invalid token")
+
+app = FastAPI(title="TradeComposer Partner API v4.2")
+
+def user_ref(orgId, uid): return db.document(f"orgs/{orgId}/users/{uid}")
+def conn_ref(orgId, uid, cid): return db.document(f"orgs/{orgId}/users/{uid}/connections/{cid}")
+def payment_ref(orgId, uid, pid): return db.document(f"orgs/{orgId}/users/{uid}/payments/{pid}")
+
+# ---------- Entitlements helper ----------
+def grant_entitlement(orgId: str, uid: str, amount_usd: float):
+    # Simple: $=> credits add; plan switch if threshold met
+    ur = user_ref(orgId, uid)
+    snap = ur.get()
+    data = snap.to_dict() if snap.exists else {"uid": uid, "plan": "free", "credits": 0}
+    data["credits"] = float(data.get("credits", 0)) + amount_usd
+    if data["credits"] >= 100 and data.get("plan") == "free":
+        data["plan"] = "pro"
+    ur.set(data, merge=True)
+    return data
+
+# ---------- Link exchange (store secrets in GSM + metadata in Firestore) ----------
+@app.post("/api/exchanges/link")
+async def link_exchange(payload: LinkExchange, decoded=Depends(verify)):
+    if decoded["uid"] != payload.userId: raise HTTPException(403, "forbidden")
+    conn_id = f"{payload.kind}-{int(time.time()*1000)}"
+    # Encrypt + store in GSM
+    secret_blob = json.dumps({"apiKey": payload.apiKey, "secret": payload.secret, "password": payload.password or ""})
+    ver_name = gsm_store(f"conn-{payload.orgId}-{payload.userId}-{conn_id}", secret_blob)
+    # Store Firestore connection meta (no raw secrets)
+    conn_ref(payload.orgId, payload.userId, conn_id).set({
+        "id": conn_id, "kind": payload.kind, "label": payload.label,
+        "gsmVersion": ver_name, "sandbox": payload.sandbox, "createdAt": int(time.time()*1000)
+    })
+    return { "id": conn_id, "kind": payload.kind, "label": payload.label, "sandbox": payload.sandbox }
+
+# ---------- List connections ----------
+@app.get("/api/exchanges/{orgId}/{uid}")
+async def list_conns(orgId: str, uid: str, decoded=Depends(verify)):
+    if decoded["uid"] != uid: raise HTTPException(403, "forbidden")
+    col = db.collection(f"orgs/{orgId}/users/{uid}/connections").stream()
+    return [ { "id": d.id, **d.to_dict() } for d in col ]
+
+# ---------- Balances (decrypt secrets, use CCXT) ----------
+@app.get("/api/exchanges/{orgId}/{uid}/{connId}/balances")
+async def balances(orgId: str, uid: str, connId: str, decoded=Depends(verify)):
+    if decoded["uid"] != uid: raise HTTPException(403, "forbidden")
+    doc = conn_ref(orgId, uid, connId).get()
+    if not doc.exists: raise HTTPException(404, "not found")
+    meta = doc.to_dict()
+    blob = gsm_access(f"conn-{orgId}-{uid}-{connId}")
+    if not blob: raise HTTPException(500, "secrets_missing")
+    s = json.loads(blob)
+    ex = make_exchange(meta["kind"], s["apiKey"], s["secret"], s.get("password") or None, sandbox=bool(meta.get("sandbox")))
+    # ccxt asyncio support: use .aio or run in thread; simplest: wrap in run_in_executor if needed
+    import ccxt.async_support as ccxta
+    cls = getattr(ccxta, meta["kind"])
+    exa = cls({'apiKey': s['apiKey'], 'secret': s['secret'], 'password': s.get('password') or None, 'enableRateLimit': True})
+    if bool(meta.get('sandbox')) and hasattr(exa, 'set_sandbox_mode'): exa.set_sandbox_mode(True)
+    try:
+        bal = await exa.fetch_balance()
+        total = { k:v for k,v in (bal.get('total') or {}).items() if isinstance(v,(int,float)) and v>0 }
+        return { "total": total, "raw": bal.get('info') }
+    finally:
+        await exa.close()
+
+# ---------- Place trade ----------
+@app.post("/api/trade/place")
+async def place_trade(req: TradeReq, decoded=Depends(verify)):
+    if decoded["uid"] != req.userId: raise HTTPException(403, "forbidden")
+    doc = conn_ref(req.orgId, req.userId, req.connId).get()
+    if not doc.exists: raise HTTPException(404, "conn not found")
+    meta = doc.to_dict()
+    blob = gsm_access(f"conn-{req.orgId}-{req.userId}-{req.connId}")
+    if not blob: raise HTTPException(500, "secrets_missing")
+    s = json.loads(blob)
+    import ccxt.async_support as ccxta
+    cls = getattr(ccxta, meta["kind"])
+    exa = cls({'apiKey': s['apiKey'], 'secret': s['secret'], 'password': s.get('password') or None, 'enableRateLimit': True})
+    if bool(meta.get('sandbox')) and hasattr(exa, 'set_sandbox_mode'): exa.set_sandbox_mode(True)
+    try:
+        if req.side=='buy':
+            o = await exa.create_market_buy_order(req.symbol, req.amount)
+        else:
+            o = await exa.create_market_sell_order(req.symbol, req.amount)
+        return { "ok": True, "order": o }
+    finally:
+        await exa.close()
+
+# ---------- Coinbase webhook → entitlements ----------
+@app.post("/api/payments/webhook/coinbase")
+async def coinbase_webhook(request: Request):
+    sig = request.headers.get("X-CC-Webhook-Signature","")
+    raw = await request.body()
+    h = hmac.new(bytes(COINBASE_WEBHOOK_SECRET, "utf-8"), raw, hashlib.sha256).hexdigest()
+    if not COINBASE_WEBHOOK_SECRET or h != sig:
+        raise HTTPException(401, "invalid signature")
+    event = json.loads(raw.decode("utf-8"))
+    data = event.get("event", {}).get("data", {})
+    status = data.get("timeline", [{}])[-1].get("status")
+    meta = data.get("metadata", {})
+    orgId = meta.get("orgId"); uid = meta.get("userId"); pid = meta.get("paymentId")
+    amount_usd = float(meta.get("amountUsd", 0) or 0)
+    if orgId and uid and pid:
+        payment_ref(orgId, uid, pid).set({ "status": status, "coinbase_id": data.get("id") }, merge=True)
+        if status in ("confirmed","resolved"):
+            grant_entitlement(orgId, uid, amount_usd or 25.0)  # default credit if not provided
+    return {"ok": True}

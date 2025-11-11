@@ -4,27 +4,33 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isSignedIn() { return request.auth != null; }
-    function hasRole(role) { return isSignedIn() && request.auth.token.role == role; }
-    function isAdmin() { return hasRole('admin'); }
-    function isEditor() { return hasRole('editor') || isAdmin(); }
-    function isViewer() { return hasRole('viewer') || isEditor(); }
+    function role() { return request.auth.token.role; }
+    function isAdmin() { return role() == 'admin'; }
+    function isEditor() { return role() == 'editor' || isAdmin(); }
+    function isViewer() { return role() == 'viewer' || isEditor(); }
 
-    // Org Policy
-    match /orgs/{orgId}/policy/orgPolicy {
-      allow read: if isViewer();
-      allow write: if isAdmin();
-    }
-
-    // Session Policy
-    match /orgs/{orgId}/sessions/{sessionId}/policy {
-      allow read: if isViewer();
-      allow write: if isEditor();
-    }
-
-    // Optional: org metadata (for switcher)
     match /orgs/{orgId} {
       allow read: if isViewer();
       allow write: if isAdmin();
+      match /policy/orgPolicy {
+        allow read: if isViewer();
+        allow write: if isAdmin();
+      }
+      match /sessions/{sessionId}/policy {
+        allow read: if isViewer();
+        allow write: if isEditor();
+      }
+      match /users/{userId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if isSignedIn() && request.auth.uid == userId;
+        match /connections/{connId} {
+          allow read, write: if isSignedIn() && request.auth.uid == userId;
+        }
+        match /payments/{payId} {
+          allow read: if isSignedIn() && request.auth.uid == userId;
+          allow write: if false; // write via server webhooks only
+        }
+      }
     }
   }
 }

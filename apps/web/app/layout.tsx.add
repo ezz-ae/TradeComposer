@@ -1,0 +1,14 @@
+
+// In your root layout.tsx wrap <WalletProvider> around children
+// import WalletProvider from '@/app/providers/Wallet';
+// ...
+/*
+<html lang="en">
+  <body>
+    <WalletProvider>
+      <WalletBar />
+      {children}
+    </WalletProvider>
+  </body>
+</html>
+*/

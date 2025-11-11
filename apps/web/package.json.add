@@ -1,0 +1,6 @@
+
+{
+  "walletconnect": {
+    "instructions": "Install these deps in your web workspace: pnpm add wagmi viem @rainbow-me/rainbowkit qrcode.react"
+  }
+}

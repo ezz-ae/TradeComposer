@@ -1,11 +1,24 @@
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException
-import asyncio, time, math
 from pydantic import BaseModel
+import asyncio, time
 
-app = FastAPI(title="Trade Composer Partner API")
+from . import ticks
 
-SESSIONS = {}
+app = FastAPI(title="Trade Composer Partner API (mock feed + matcher)")
+
+bg_task = None
+@app.on_event("startup")
+async def _startup():
+    global bg_task
+    if bg_task is None:
+        loop = asyncio.get_event_loop()
+        bg_task = loop.create_task(ticks.ENGINE.run())
+
+@app.on_event("shutdown")
+async def _shutdown():
+    global bg_task
+    if bg_task: bg_task.cancel()
 
 def assert_pro(x_device_lease: str | None, x_role: str | None):
     if x_role != "pro": raise HTTPException(status_code=403, detail="pro role required")
@@ -16,10 +29,11 @@ class PlanIn(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "sessions": list(ticks.ENGINE.sessions.keys())}
 
 @app.post("/api/plan")
 def plan(inp: PlanIn):
+    # simple synthetic levels, unchanged
     return {
       "symbol": inp.symbol,
       "regime": {"trend":"up","vol":"normal","bias":"bullish-pullback"},
@@ -33,19 +47,21 @@ def plan(inp: PlanIn):
 @app.post("/api/sessions")
 def create_session(body: dict):
     sid = body.get("id","demo")
-    SESSIONS[sid] = {"id": sid, "symbol": body.get("symbol","BTCUSD"), "started_at": time.time()}
-    return SESSIONS[sid]
+    symbol = body.get("symbol","BTCUSD")
+    s = ticks.ENGINE.get_or_create(sid, symbol)
+    return {"id": sid, "symbol": s.symbol, "started_at": time.time()}
 
 @app.get("/api/sessions/{sid}/state")
 def session_state(sid: str):
-    s = SESSIONS.get(sid) or {"id": sid, "symbol": "BTCUSD"}
+    s = ticks.ENGINE.get_or_create(sid, "BTCUSD")
+    snap = s.scope_snapshot()
     return {
-        "id": s["id"],
-        "symbol": s["symbol"],
+        "id": sid,
+        "symbol": s.symbol,
         "regime": {"trend": "up", "vol": "normal", "bias": "bullish-pullback"},
-        "confidence": 0.72,
-        "r": 0.58,
-        "metrics": {"mae_60s": 12.4}
+        "confidence": snap["confidence"],
+        "r": snap["r"],
+        "metrics": {"n_ticks": len(s.ticks)}
     }
 
 @app.post("/api/sessions/{sid}/orders")
@@ -61,20 +77,11 @@ def orders_guarded(sid: str, body: dict, x_device_lease: str | None = Header(Non
 @app.websocket("/ws/sessions/{sid}/state")
 async def ws_state(ws: WebSocket, sid: str):
     await ws.accept()
-    t0 = time.time()
+    s = ticks.ENGINE.get_or_create(sid, "BTCUSD")
     try:
         while True:
-            t = time.time() - t0
-            expected = [math.sin((t+i)/6.0)*20 for i in range(60)]
-            real     = [math.sin((t+i)/6.0)*20 + (0.8 if i<30 else -0.6) for i in range(60)]
-            payload = {
-                "ts": time.time(),
-                "confidence": 0.6 + 0.3*math.sin(t/20.0),
-                "r": 0.5 + 0.2*math.sin(t/15.0),
-                "expected": expected,
-                "real": real
-            }
-            await ws.send_json(payload)
+            snap = s.scope_snapshot()
+            await ws.send_json(snap)
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
         return

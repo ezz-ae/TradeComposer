@@ -16,6 +16,7 @@ import QuoterSim from "../components/QuoterSim";
 import { useJournal } from "../hooks/useJournal";
 import { ToasterProvider, useToast } from "../components/Toaster";
 import { RiskProvider } from "../contexts/RiskContext";
+import { useRisk } from "../contexts/RiskContext";
 
 function PageInner(){
   const [plan, setPlan] = useState<any>(null);
@@ -25,6 +26,7 @@ function PageInner(){
   const live = useSessionWS("demo");
   const toast = useToast();
   const J = useJournal();
+  const risk = useRisk();
 
   const compositeRef = useRef<number[] | null>(null);
   useEffect(()=>{
@@ -62,6 +64,24 @@ function PageInner(){
     const why = plan?.tasks?.[1]?.desc || "SEE action";
     try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why }) }); }catch{}
     toast({ text: ok ? `SEE ${mode.toUpperCase()} sent` : `SEE ${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
+  }
+
+  function railsState(){
+    const slip = risk.knobs.find(k=>k.id==='slipCap')!.value;
+    const kill = risk.knobs.find(k=>k.id==='killGap')!.value;
+    return { slipCapped: slip>12, killHigh: kill>30 };
+  }
+
+  async function onSend(mode: 'test'|'prioritize'|'force', intent:any){
+    const r = await fetch("/api/orders", { method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ mode, intent }) });
+    const ok = r.ok;
+    J.push({ type:"api", ts: Date.now(), path:"/api/orders", ok, payload: await r.text() });
+    toast({ text: ok ? `${mode.toUpperCase()} sent` : `${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
+    if(ok){
+      setReviewIntent(null);
+      try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why: 'Review→'+mode }) }); }catch{}
+    }
   }
 
   useHotkeys('shift+t', ()=> onAct('test'), [plan]);
@@ -133,7 +153,7 @@ function PageInner(){
         {simHook.view}
       </div>
 
-      <ReviewOverlay intent={reviewIntent} onClose={()=>setReviewIntent(null)} />
+      <ReviewOverlay intent={reviewIntent} onClose={()=>setReviewIntent(null)} onSend={onSend} rails={railsState()} />
     </main>
   );
 }

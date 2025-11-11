@@ -1,0 +1,17 @@
+
+{
+  "name": "audit-logger",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@google-cloud/bigquery": "^7.7.0",
+    "firebase-admin": "^12.6.0",
+    "hono": "^4.6.7"
+  },
+  "scripts": {
+    "dev": "node --watch ./dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "start": "node ./dist/index.js"
+  }
+}

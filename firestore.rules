@@ -1,0 +1,30 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function hasRole(role) { return isSignedIn() && request.auth.token.role == role; }
+    function isAdmin() { return hasRole('admin'); }
+    function isEditor() { return hasRole('editor') || isAdmin(); }
+    function isViewer() { return hasRole('viewer') || isEditor(); }
+
+    // Org Policy
+    match /orgs/{orgId}/policy/orgPolicy {
+      allow read: if isViewer();
+      allow write: if isAdmin();
+    }
+
+    // Session Policy
+    match /orgs/{orgId}/sessions/{sessionId}/policy {
+      allow read: if isViewer();
+      allow write: if isEditor();
+    }
+
+    // Optional: org metadata (for switcher)
+    match /orgs/{orgId} {
+      allow read: if isViewer();
+      allow write: if isAdmin();
+    }
+  }
+}

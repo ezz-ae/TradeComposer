@@ -1,0 +1,6 @@
+
+## 3.1.0 — Roles, Orgs, Audit (planned)
+- Roles & permissions with UI guards and Firestore rules
+- Multi-tenant org switcher
+- BigQuery audit streaming
+- Gemini UI diff + explain short forms + risk suggestions

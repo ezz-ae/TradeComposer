@@ -2,6 +2,12 @@
 "use client";
 import { useState } from 'react';
 
+const TEMPLATES = [
+  'Liquidity spike, need exposure before reclaim; stop is defined and tight.',
+  'Event-driven move; waiting risks missing RR window; risk is quantified.',
+  'Breaker retest with confluence; front-running cascading fills under cap.'
+];
+
 export default function ForceShield({ open, onCancel, onConfirm }:{ open:boolean; onCancel:()=>void; onConfirm:(reason:string)=>void }){
   const [reason, setReason] = useState('');
   const [ack, setAck] = useState(false);
@@ -12,6 +18,11 @@ export default function ForceShield({ open, onCancel, onConfirm }:{ open:boolean
       <div style={{ width:600, background:'#fff', borderRadius:12, padding:16 }} onClick={e=>e.stopPropagation()}>
         <div style={{ fontWeight:700, marginBottom:8 }}>Force Confirm</div>
         <div style={{ fontSize:13, opacity:.8, marginBottom:8 }}>Explain why Force is necessary and acknowledge risk.</div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:8 }}>
+          {TEMPLATES.map((t)=> (
+            <button key={t} onClick={()=>setReason(t)} style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #ddd', background:'#fff', fontSize:12 }}>{t}</button>
+          ))}
+        </div>
         <textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Reason (min 12 chars)"
           style={{ width:'100%', minHeight:120, border:'1px solid #ddd', borderRadius:8, padding:8 }} />
         <label style={{ display:'flex', gap:8, alignItems:'center', marginTop:8, fontSize:13 }}>

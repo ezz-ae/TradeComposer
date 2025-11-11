@@ -2,6 +2,8 @@
 "use client";
 import { useMemo, useState } from "react";
 
+const SIM_KEY = 'tc.sim.last';
+
 export default function QuoterSim(){
   const [res, setRes] = useState<any>(null);
   async function simulate(intent:any){
@@ -14,6 +16,7 @@ export default function QuoterSim(){
     };
     const r = await fetch('/api/sim/quote', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const j = await r.json(); setRes(j);
+    try{ localStorage.setItem(SIM_KEY, JSON.stringify({ ts: Date.now(), result: j })); }catch{}
   }
 
   const maxDepth = useMemo(()=>{

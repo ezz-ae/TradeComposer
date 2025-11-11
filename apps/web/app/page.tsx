@@ -13,11 +13,14 @@ import Journal from "../components/Journal";
 import Guardrails from "../components/Guardrails";
 import PrioritizeQueue from "../components/PrioritizeQueue";
 import QuoterSim from "../components/QuoterSim";
+import HotkeysLegend from "../components/HotkeysLegend";
 import { useJournal } from "../hooks/useJournal";
 import { ToasterProvider, useToast } from "../components/Toaster";
 import { RiskProvider } from "../contexts/RiskContext";
 import { useRisk } from "../contexts/RiskContext";
 import { exportPack } from "../lib/exportPack";
+
+declare global { interface Window { __TC_SCOPE?: any; __TC_RISK?: any; __TC_PLAN?: any; } }
 
 function PageInner(){
   const [plan, setPlan] = useState<any>(null);
@@ -36,11 +39,15 @@ function PageInner(){
     try{ compositeRef.current = JSON.parse(el.dataset.composite || "[]"); }catch{ compositeRef.current = null; }
   });
 
+  useEffect(()=>{ window.__TC_RISK = risk.knobs; }, [risk.knobs]);
+
   useEffect(()=>{
     let t:any;
     if(live){
+      window.__TC_SCOPE = live;
       t = setInterval(()=>{
         J.push({ type:"ws", ts: Date.now(), snapshot: live });
+        window.__TC_SCOPE = live;
       }, 2000);
     }
     return ()=> t && clearInterval(t);
@@ -51,6 +58,7 @@ function PageInner(){
       body: JSON.stringify({ symbol }) });
     const data = await r.json();
     setPlan(data);
+    window.__TC_PLAN = data;
     J.push({ type:"api", ts: Date.now(), path:"/api/plan", ok:true, payload:data });
     toast({ text:`Plan loaded for ${symbol}`, kind:"success" });
   }
@@ -148,8 +156,9 @@ function PageInner(){
         <PrioritizeQueue />
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginTop: 16 }}>
         <Composer baseExpected={scopeData ? scopeData.expected : null} />
+        <HotkeysLegend />
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginTop: 16 }}>

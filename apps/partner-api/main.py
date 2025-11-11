@@ -1,12 +1,14 @@
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import asyncio, time
 
 from . import ticks
 from .sim_quoter import OrderBook, simulate_quote
+from .queue import BUS
 
-app = FastAPI(title="Trade Composer Partner API (mock feed + matcher + quoter sim)")
+app = FastAPI(title="Trade Composer Partner API (mock feed + matcher + quoter sim + queue)")
 
 bg_task = None
 @app.on_event("startup")
@@ -95,9 +97,39 @@ async def ws_state(ws: WebSocket, sid: str):
 
 @app.post("/api/sim/quote")
 def sim_quote(body: QuoteIn):
-    # use last price from session 'demo' as mid, else default to 100
     s = ticks.ENGINE.get_or_create("demo", "BTCUSD")
     mid = s.last_n(1)[0] if s.last_n(1) else 100.0
     book = OrderBook(mid=mid, spread_bps=2.0, depth_levels=10)
     size_usd = max(1.0, body.equity_usd * (body.size_pct/100.0))
     return simulate_quote(body.side, size_usd, body.slip_cap_bps, body.ttl_ms, book)
+
+# ---- Queue API ----
+@app.get("/api/queue")
+def queue_list():
+    return {"ok": True, "items": BUS.items[-100:]}
+
+@app.post("/api/queue")
+def queue_enqueue(body: dict):
+    mode = body.get("mode","test")
+    symbol = body.get("symbol","BTCUSD")
+    why = body.get("why","manual")
+    it = BUS.enqueue(mode, symbol, why)
+    return {"ok": True, "item": it}
+
+@app.patch("/api/queue/{qid}")
+def queue_patch(qid: str, body: dict):
+    it = BUS.patch(qid, body.get("action","promote"))
+    if not it: return JSONResponse({"ok": False, "error":"not_found"}, status_code=404)
+    return {"ok": True, "item": it}
+
+@app.websocket("/ws/queue")
+async def ws_queue(ws: WebSocket):
+    await ws.accept()
+    q = BUS.subscribe()
+    try:
+        while True:
+            msg = await q.get()
+            await ws.send_json(msg)
+    except WebSocketDisconnect:
+        BUS.unsubscribe(q)
+        return

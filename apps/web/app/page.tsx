@@ -21,7 +21,7 @@ function PageInner(){
   const [plan, setPlan] = useState<any>(null);
   const [symbol, setSymbol] = useState("BTCUSD");
   const [reviewIntent, setReviewIntent] = useState<any>(null);
-  const [simHook] = useState(()=> QuoterSim()); // stable hook-like factory
+  const [simHook] = useState(()=> QuoterSim());
   const live = useSessionWS("demo");
   const toast = useToast();
   const J = useJournal();
@@ -58,6 +58,9 @@ function PageInner(){
       body: JSON.stringify({ mode, intent: plan?.tasks?.[1]?.order || null }) });
     const ok = r.ok;
     J.push({ type:"api", ts: Date.now(), path:"/api/orders", ok, payload: await r.text() });
+    // enqueue into queue
+    const why = plan?.tasks?.[1]?.desc || "SEE action";
+    try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why }) }); }catch{}
     toast({ text: ok ? `SEE ${mode.toUpperCase()} sent` : `SEE ${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
   }
 

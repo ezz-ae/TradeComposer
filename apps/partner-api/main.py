@@ -35,7 +35,7 @@ class QuoteIn(BaseModel):
     size_pct: float
     slip_cap_bps: float
     ttl_ms: int
-    equity_usd: float = 10000.0  # simple equity assumption
+    equity_usd: float = 10000.0
 
 @app.get("/health")
 def health():
@@ -78,9 +78,9 @@ def orders_guarded(sid: str, body: dict, x_device_lease: str | None = Header(Non
     assert_pro(x_device_lease, x_role)
     mode = body.get("mode")
     if mode == "review": return {"ok": True, "review_packet": {"sid": sid, "intent": body.get("intent")}}
-    if mode == "test": return {"ok": True, "queued": True, "mode": "test", "size_pct": 0.03}
-    if mode == "prioritize": return {"ok": True, "queued": True, "mode": "prioritize"}
-    if mode == "force": return {"ok": True, "committed": True, "mode": "force"}
+    if mode == "test": return {"ok": True, "queued": True, "mode": "test", "size_pct": 0.03, "reason": body.get("reason")}
+    if mode == "prioritize": return {"ok": True, "queued": True, "mode": "prioritize", "reason": body.get("reason")}
+    if mode == "force": return {"ok": True, "committed": True, "mode": "force", "reason": body.get("reason")}
     return {"ok": False, "error": "invalid_mode"}
 
 @app.websocket("/ws/sessions/{sid}/state")
@@ -103,7 +103,7 @@ def sim_quote(body: QuoteIn):
     size_usd = max(1.0, body.equity_usd * (body.size_pct/100.0))
     return simulate_quote(body.side, size_usd, body.slip_cap_bps, body.ttl_ms, book)
 
-# ---- Queue API ----
+# ---- Queue API (with context) ----
 @app.get("/api/queue")
 def queue_list():
     return {"ok": True, "items": BUS.items[-100:]}
@@ -113,7 +113,8 @@ def queue_enqueue(body: dict):
     mode = body.get("mode","test")
     symbol = body.get("symbol","BTCUSD")
     why = body.get("why","manual")
-    it = BUS.enqueue(mode, symbol, why)
+    ctx = body.get("context") or {}
+    it = BUS.enqueue(mode, symbol, why, ctx)
     return {"ok": True, "item": it}
 
 @app.patch("/api/queue/{qid}")

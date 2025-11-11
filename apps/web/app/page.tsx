@@ -14,13 +14,14 @@ import Guardrails from "../components/Guardrails";
 import PrioritizeQueue from "../components/PrioritizeQueue";
 import QuoterSim from "../components/QuoterSim";
 import HotkeysLegend from "../components/HotkeysLegend";
+import ReplayScrubber from "../components/ReplayScrubber";
 import { useJournal } from "../hooks/useJournal";
 import { ToasterProvider, useToast } from "../components/Toaster";
 import { RiskProvider } from "../contexts/RiskContext";
 import { useRisk } from "../contexts/RiskContext";
 import { exportPack } from "../lib/exportPack";
 
-declare global { interface Window { __TC_SCOPE?: any; __TC_RISK?: any; __TC_PLAN?: any; } }
+declare global { interface Window { __TC_SCOPE?: any; __TC_RISK?: any; __TC_PLAN?: any; __TC_REPLAY?: (i:number)=>void } }
 
 function PageInner(){
   const [plan, setPlan] = useState<any>(null);
@@ -53,12 +54,31 @@ function PageInner(){
     return ()=> t && clearInterval(t);
   }, [live?.ts]);
 
+  // Replay bridge
+  useEffect(()=>{
+    (window as any).__TC_REPLAY = (i:number)=>{
+      J.setReplay(true);
+      J.setReplayIndex(i);
+      toast({ text:`Replay → frame ${i+1}`, kind:'success' });
+    };
+    return ()=>{ try{ delete (window as any).__TC_REPLAY; }catch{} };
+  }, []);
+
+  function captureContext(){
+    let sim:any = null;
+    try{ sim = JSON.parse(localStorage.getItem('tc.sim.last') || 'null'); }catch{}
+    const scope = (window as any).__TC_SCOPE || null;
+    const riskK = (window as any).__TC_RISK || null;
+    const frameIdx = J.items.filter(i=>i.type==='ws').length - 1;
+    return { scope, risk: riskK, plan, sim, frameIndex: Math.max(0, frameIdx) };
+  }
+
   async function onCheckchart() {
     const r = await fetch("/api/plan", { method:"POST", headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ symbol }) });
     const data = await r.json();
     setPlan(data);
-    window.__TC_PLAN = data;
+    (window as any).__TC_PLAN = data;
     J.push({ type:"api", ts: Date.now(), path:"/api/plan", ok:true, payload:data });
     toast({ text:`Plan loaded for ${symbol}`, kind:"success" });
   }
@@ -70,7 +90,8 @@ function PageInner(){
     const ok = r.ok;
     J.push({ type:"api", ts: Date.now(), path:"/api/orders", ok, payload: await r.text() });
     const why = plan?.tasks?.[1]?.desc || "SEE action";
-    try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why }) }); }catch{}
+    const context = captureContext();
+    try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why, context }) }); }catch{}
     toast({ text: ok ? `SEE ${mode.toUpperCase()} sent` : `SEE ${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
   }
 
@@ -90,7 +111,8 @@ function PageInner(){
     toast({ text: ok ? `${mode.toUpperCase()} sent` : `${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
     if(ok){
       setReviewIntent(null);
-      try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why: 'Review→'+mode }) }); }catch{}
+      const context = captureContext();
+      try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why: 'Review→'+mode, context }) }); }catch{}
     }
   }
 
@@ -98,7 +120,7 @@ function PageInner(){
   useHotkeys('shift+p', ()=> onAct('prioritize'), [plan]);
   useHotkeys('shift+r', ()=> onAct('review'), [plan]);
   useHotkeys('shift+enter', ()=> onAct('force'), [plan]);
-  useHotkeys('esc, esc', ()=> { J.setReplay(false); toast({ text:"Panic (UI state cleared)", kind:"error" }); }, [plan]);
+  useHotkeys('esc, esc', ()=> { J.setReplay(false); toast({ text:"Panic (clear UI state)", kind:"error" }); }, [plan]);
 
   const scopeData = useMemo(()=>{
     if(!J.replay || !live) return live;
@@ -108,6 +130,7 @@ function PageInner(){
     return frame.snapshot;
   }, [J.replay, J.replayIndex, J.items, live]);
 
+  const wsFrames = useMemo(()=> J.items.filter(i=>i.type==='ws'), [J.items]);
   const ghost = useMemo(()=> compositeRef.current || null, [compositeRef.current]);
 
   return (
@@ -164,7 +187,7 @@ function PageInner(){
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginTop: 16 }}>
         <Journal items={J.items} replay={J.replay} setReplay={J.setReplay}
           replayIndex={J.replayIndex} setReplayIndex={J.setReplayIndex} onExport={J.exportJSON} />
-        {simHook.view}
+        <ReplayScrubber total={wsFrames.length} index={J.replayIndex} onChange={J.setReplayIndex} />
       </div>
 
       <ReviewOverlay intent={reviewIntent} onClose={()=>setReviewIntent(null)} onSend={onSend} rails={railsState()} />

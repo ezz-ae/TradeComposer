@@ -15,7 +15,6 @@ class QueueBus:
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue()
         self._subs.append(q)
-        # push initial snapshot
         q.put_nowait({"type":"snapshot","items": self.items[-50:]})
         return q
 
@@ -23,14 +22,15 @@ class QueueBus:
         if q in self._subs:
             self._subs.remove(q)
 
-    def enqueue(self, mode: str, symbol: str, why: str):
+    def enqueue(self, mode: str, symbol: str, why: str, ctx: Dict[str, Any] | None = None):
         it = {
             "id": str(uuid.uuid4())[:8],
             "mode": mode,
             "symbol": symbol,
             "why": why,
             "status": "queued",
-            "ts": time.time()
+            "ts": time.time(),
+            "context": ctx or {}
         }
         self.items.append(it)
         self._broadcast()

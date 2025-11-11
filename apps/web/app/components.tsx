@@ -1,7 +1,7 @@
 
 "use client";
 import { useState } from "react";
-import { useProKeys } from "./prokeys";
+import { useProKeys } from "../hooks/useProKeys";
 
 const Button = ({ onClick, color, children }: { onClick: (e: any) => void, color: string, children: any }) => (
   <button onClick={onClick} style={{ padding: "8px 12px", borderRadius: 8, background: color, color: "white" }}>

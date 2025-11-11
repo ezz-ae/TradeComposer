@@ -10,7 +10,7 @@ export default function ScopeCanvas({ expected, real }:{ expected:number[], real
     ctx.clearRect(0,0,W,H);
 
     function draw(ctx: CanvasRenderingContext2D, line: number[], dashed=false) {
-      if (!line?.length) return;
+      if (!line?.length || !ctx) return;
       const maxAbs = Math.max(20, ...line.map(v=>Math.abs(v)));
       const y = (v:number)=> H/2 - (v/maxAbs)*(H*0.4);
       ctx.beginPath();

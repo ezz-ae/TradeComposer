@@ -10,3 +10,5 @@ requests==2.32.3
 ccxt==4.4.49
 cryptography==43.0.1
 pydantic==2.8.2
+pandas==2.2.2
+numpy==1.26.4

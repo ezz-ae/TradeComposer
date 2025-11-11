@@ -1,0 +1,6 @@
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/tradecomposer-api:v4.4.1', './apps/partner-api']
+images:
+  - 'gcr.io/$PROJECT_ID/tradecomposer-api:v4.4.1'

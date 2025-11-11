@@ -1,25 +1,36 @@
 
-# Trade Composer — Monorepo (Starter)
+# TradeComposer — V2.0.1
 
-This is a ready-to-run scaffold for the **Trade Composer** platform.
+Partner-first, composable trading UX — audit-grade by default.
 
-## Quick start
+## Quickstart
 
-### Requirements
-- Node 18+ and **npm**
-- Python 3.11+
-- (Optional) Docker for ClickHouse/Redis
-
-### Run
-1) Install dependencies
 ```bash
-npm install
-```
-2) Start the Partner API (in a separate terminal)
-```bash
-uvicorn apps.partner-api.main:app --reload --host 0.0.0.0 --port 8080
-```
-3) Start the Web app (in a separate terminal)
-```bash
+npm i -g pnpm
+cp .env.example .env
+cp apps/web/.env.local.example apps/web/.env.local
+pnpm install
+
+# run API
+npm run dev:api
+
+# run web (Next.js 14)
 npm run dev
+# open http://localhost:3000
 ```
+
+## Firebase (local)
+```bash
+firebase emulators:start
+# apphosting runs `npm run dev` and proxies to port 3000
+```
+
+## What changed in 2.0.1
+- **Next 14.2.5** pin to fix `react-dom/server.edge` export errors.
+- **Root dev scripts** so **npm** works with workspaces (Firebase friendly).
+- **IPv4 emulator hosts** to avoid `::1` port probe issues.
+- **Gemini 1.5 prompt pack** and system patterns included (see `docs/GEMINI.md`).
+- **Project details** and first-user TODO refreshed.
+- Keeps depth/forensics layers: contextful queue, replay, guarded Force, forensic zip with CSVs.
+
+See `docs/CHANGELOG.md` for the full diff.

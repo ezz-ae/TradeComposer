@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import ForceShield from './ForceShield';
 
-export default function ReviewOverlay({ intent, onClose, onSend, rails }:{ intent:any; onClose:()=>void; onSend:(mode:'test'|'prioritize'|'force', intent:any, payload?:any)=>void; rails:{ slipCapped:boolean; killHigh:boolean } }){
+export default function ReviewOverlay({ intent, onClose, onSend, rails, defaultReason }:{ intent:any; onClose:()=>void; onSend:(mode:'test'|'prioritize'|'force', intent:any, payload?:any)=>void; rails:{ slipCapped:boolean; killHigh:boolean }; defaultReason?: string }){
   const [shield, setShield] = useState(false);
   if(!intent) return null;
   const forceBlocked = rails.slipCapped || rails.killHigh;
@@ -33,7 +33,7 @@ export default function ReviewOverlay({ intent, onClose, onSend, rails }:{ inten
           </div>
         </div>
       </div>
-      <ForceShield open={shield} onCancel={()=>setShield(false)} onConfirm={(reason)=>{ setShield(false); onSend('force', intent, { reason }); }} />
+      <ForceShield open={shield} defaultReason={defaultReason} onCancel={()=>setShield(false)} onConfirm={(reason)=>{ setShield(false); onSend('force', intent, { reason }); }} />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 
 "use client";
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const TEMPLATES = [
   'Liquidity spike, need exposure before reclaim; stop is defined and tight.',
@@ -8,9 +8,10 @@ const TEMPLATES = [
   'Breaker retest with confluence; front-running cascading fills under cap.'
 ];
 
-export default function ForceShield({ open, onCancel, onConfirm }:{ open:boolean; onCancel:()=>void; onConfirm:(reason:string)=>void }){
+export default function ForceShield({ open, defaultReason, onCancel, onConfirm }:{ open:boolean; defaultReason?:string; onCancel:()=>void; onConfirm:(reason:string)=>void }){
   const [reason, setReason] = useState('');
   const [ack, setAck] = useState(false);
+  useEffect(()=>{ if(open){ setReason(defaultReason || ''); setAck(false); } }, [open, defaultReason]);
   if(!open) return null;
   const valid = ack && reason.trim().length >= 12;
   return (

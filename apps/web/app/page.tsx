@@ -20,13 +20,18 @@ import { ToasterProvider, useToast } from "../components/Toaster";
 import { RiskProvider } from "../contexts/RiskContext";
 import { useRisk } from "../contexts/RiskContext";
 import { exportPack } from "../lib/exportPack";
+import { buildReason } from "../lib/reason";
+import { hashString } from "../lib/hash";
 
 declare global { interface Window { __TC_SCOPE?: any; __TC_RISK?: any; __TC_PLAN?: any; __TC_REPLAY?: (i:number)=>void } }
+
+const REASONS_KEY = 'tc.reasons.v1';
 
 function PageInner(){
   const [plan, setPlan] = useState<any>(null);
   const [symbol, setSymbol] = useState("BTCUSD");
   const [reviewIntent, setReviewIntent] = useState<any>(null);
+  const [defaultReviewReason, setDefaultReviewReason] = useState<string>('');
   const [simHook] = useState(()=> QuoterSim());
   const live = useSessionWS("demo");
   const toast = useToast();
@@ -73,6 +78,17 @@ function PageInner(){
     return { scope, risk: riskK, plan, sim, frameIndex: Math.max(0, frameIdx) };
   }
 
+  function saveReason(mode:'test'|'prioritize'|'force'|'review', reason:string){
+    try{
+      const now = Date.now();
+      const entry = { ts: now, mode, symbol, reason, hash: hashString(`${now}:${mode}:${symbol}:${reason}`) };
+      const arr = JSON.parse(localStorage.getItem(REASONS_KEY) || '[]');
+      arr.push(entry);
+      localStorage.setItem(REASONS_KEY, JSON.stringify(arr.slice(-1000)));
+      J.push({ type:'reason', ts: now, payload: entry });
+    }catch{}
+  }
+
   async function onCheckchart() {
     const r = await fetch("/api/plan", { method:"POST", headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ symbol }) });
@@ -84,13 +100,16 @@ function PageInner(){
   }
 
   async function onAct(mode: string){
-    J.push({ type:"see", mode, ts: Date.now(), detail: plan?.tasks?.[1]?.order || null });
+    const ctx = captureContext();
+    const autoReason = buildReason({ mode: mode as any, symbol, plan: ctx.plan, riskKnobs: ctx.risk, scope: ctx.scope, frameIndex: ctx.frameIndex });
+    saveReason(mode as any, autoReason);
+    J.push({ type:"see", mode, ts: Date.now(), detail: plan?.tasks?.[1]?.order || null, reason:autoReason });
     const r = await fetch("/api/orders", { method:"POST", headers: { "Content-Type":"application/json" },
-      body: JSON.stringify({ mode, intent: plan?.tasks?.[1]?.order || null }) });
+      body: JSON.stringify({ mode, intent: plan?.tasks?.[1]?.order || null, reason: autoReason }) });
     const ok = r.ok;
     J.push({ type:"api", ts: Date.now(), path:"/api/orders", ok, payload: await r.text() });
     const why = plan?.tasks?.[1]?.desc || "SEE action";
-    const context = captureContext();
+    const context = ctx;
     try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why, context }) }); }catch{}
     toast({ text: ok ? `SEE ${mode.toUpperCase()} sent` : `SEE ${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
   }
@@ -101,9 +120,17 @@ function PageInner(){
     return { slipCapped: slip>12, killHigh: kill>30 };
   }
 
+  function prepareDefaultReviewReason(){
+    const ctx = captureContext();
+    const autoReason = buildReason({ mode:'force', symbol, plan: ctx.plan, riskKnobs: ctx.risk, scope: ctx.scope, frameIndex: ctx.frameIndex });
+    setDefaultReviewReason(autoReason);
+  }
+
   async function onSend(mode: 'test'|'prioritize'|'force', intent:any, payload?:any){
-    const body:any = { mode, intent };
-    if(payload?.reason) body.reason = payload.reason;
+    const ctx = captureContext();
+    const reason = payload?.reason || buildReason({ mode, symbol, plan: ctx.plan, riskKnobs: ctx.risk, scope: ctx.scope, frameIndex: ctx.frameIndex });
+    saveReason(mode, reason);
+    const body:any = { mode, intent, reason };
     const r = await fetch("/api/orders", { method:"POST", headers:{ "Content-Type":"application/json" },
       body: JSON.stringify(body) });
     const ok = r.ok;
@@ -111,14 +138,14 @@ function PageInner(){
     toast({ text: ok ? `${mode.toUpperCase()} sent` : `${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
     if(ok){
       setReviewIntent(null);
-      const context = captureContext();
+      const context = ctx;
       try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why: 'Review→'+mode, context }) }); }catch{}
     }
   }
 
   useHotkeys('shift+t', ()=> onAct('test'), [plan]);
   useHotkeys('shift+p', ()=> onAct('prioritize'), [plan]);
-  useHotkeys('shift+r', ()=> onAct('review'), [plan]);
+  useHotkeys('shift+r', ()=> { prepareDefaultReviewReason(); setReviewIntent(plan?.tasks?.[1]?.order || {}); }, [plan]);
   useHotkeys('shift+enter', ()=> onAct('force'), [plan]);
   useHotkeys('esc, esc', ()=> { J.setReplay(false); toast({ text:"Panic (clear UI state)", kind:"error" }); }, [plan]);
 
@@ -175,7 +202,7 @@ function PageInner(){
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginTop: 16 }}>
-        <Executor rNow={scopeData ? scopeData.r : 0.5} onReview={setReviewIntent} onSim={simHook.simulate} />
+        <Executor rNow={scopeData ? scopeData.r : 0.5} onReview={(intent:any)=>{ prepareDefaultReviewReason(); setReviewIntent(intent); }} onSim={simHook.simulate} />
         <PrioritizeQueue />
       </div>
 
@@ -190,7 +217,7 @@ function PageInner(){
         <ReplayScrubber total={wsFrames.length} index={J.replayIndex} onChange={J.setReplayIndex} />
       </div>
 
-      <ReviewOverlay intent={reviewIntent} onClose={()=>setReviewIntent(null)} onSend={onSend} rails={railsState()} />
+      <ReviewOverlay intent={reviewIntent} onClose={()=>setReviewIntent(null)} onSend={onSend} rails={railsState()} defaultReason={defaultReviewReason} />
     </main>
   );
 }

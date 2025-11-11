@@ -1,33 +1,47 @@
 
 import { idbGet } from './idb';
+import { hashString } from './hash';
 
 const PRESETS_KEY = 'tc.composer.presets.v1';
 const SIM_KEY = 'tc.sim.last';
+const REASONS_KEY = 'tc.reasons.v1';
 
 export async function exportPack(){
-  // journal from idb
   const journal = await idbGet('journal','items') || [];
-  // presets from localStorage
+  // frames from ws snapshots
+  const frames = journal.filter((i:any)=>i.type==='ws').map((i:any, idx:number)=>{
+    const exp = i.snapshot?.expected; const real = i.snapshot?.real;
+    const last = (arr:any)=> Array.isArray(arr) && arr.length ? arr[arr.length-1] : null;
+    return {
+      index: idx,
+      ts: i.ts,
+      r: i.snapshot?.r ?? null,
+      confidence: i.snapshot?.confidence ?? null,
+      expected_last: last(exp),
+      real_last: last(real)
+    };
+  });
+
+  // presets + sim
   let presets: Record<string, any> = {};
   try{ presets = JSON.parse(localStorage.getItem(PRESETS_KEY) || '{}'); }catch{}
-  // sim (last book)
   let sim: any = null;
   try{ sim = JSON.parse(localStorage.getItem(SIM_KEY) || 'null'); }catch{}
-  // env (client-safe)
+
+  // reasons
+  let reasons: any[] = [];
+  try{ reasons = JSON.parse(localStorage.getItem(REASONS_KEY) || '[]'); }catch{}
+
+  // env/scope/risk/plan/queue
   const env = {
     PARTNER_API_URL: process.env.NEXT_PUBLIC_PARTNER_API_URL || process.env.PARTNER_API_URL || 'http://localhost:8080'
   };
-  // risk/scope/plan from window bridge
   const scope = (window as any).__TC_SCOPE || null;
   const risk = (window as any).__TC_RISK || null;
   const plan = (window as any).__TC_PLAN || null;
-  // queue snapshot
-  let queue: any = null;
-  try{
-    const r = await fetch('/api/queue'); queue = await r.json();
-  }catch{}
+  let queue: any = null; try{ const r = await fetch('/api/queue'); queue = await r.json(); }catch{}
 
-  const body = { journal: { items: journal }, presets, env, scope, risk, plan, sim, queue };
+  const body = { journal: { items: journal }, presets, env, scope, risk, plan, sim: sim?.result || sim, queue, frames, ladder: sim?.result?.book || sim?.book || { bids:[], asks:[] }, reasons };
   const r = await fetch('/api/export', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
   const blob = await r.blob();
   const a = document.createElement('a');

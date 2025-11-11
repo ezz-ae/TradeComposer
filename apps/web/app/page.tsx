@@ -17,6 +17,7 @@ import { useJournal } from "../hooks/useJournal";
 import { ToasterProvider, useToast } from "../components/Toaster";
 import { RiskProvider } from "../contexts/RiskContext";
 import { useRisk } from "../contexts/RiskContext";
+import { exportPack } from "../lib/exportPack";
 
 function PageInner(){
   const [plan, setPlan] = useState<any>(null);
@@ -60,7 +61,6 @@ function PageInner(){
       body: JSON.stringify({ mode, intent: plan?.tasks?.[1]?.order || null }) });
     const ok = r.ok;
     J.push({ type:"api", ts: Date.now(), path:"/api/orders", ok, payload: await r.text() });
-    // enqueue into queue
     const why = plan?.tasks?.[1]?.desc || "SEE action";
     try{ await fetch('/api/queue', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode, symbol, why }) }); }catch{}
     toast({ text: ok ? `SEE ${mode.toUpperCase()} sent` : `SEE ${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
@@ -72,9 +72,11 @@ function PageInner(){
     return { slipCapped: slip>12, killHigh: kill>30 };
   }
 
-  async function onSend(mode: 'test'|'prioritize'|'force', intent:any){
+  async function onSend(mode: 'test'|'prioritize'|'force', intent:any, payload?:any){
+    const body:any = { mode, intent };
+    if(payload?.reason) body.reason = payload.reason;
     const r = await fetch("/api/orders", { method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ mode, intent }) });
+      body: JSON.stringify(body) });
     const ok = r.ok;
     J.push({ type:"api", ts: Date.now(), path:"/api/orders", ok, payload: await r.text() });
     toast({ text: ok ? `${mode.toUpperCase()} sent` : `${mode.toUpperCase()} failed`, kind: ok? "success":"error" });
@@ -102,7 +104,10 @@ function PageInner(){
 
   return (
     <main style={{ padding: 24, fontFamily: "Inter, system-ui, Arial", maxWidth: 1200, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700 }}>Trade Composer</h1>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700 }}>Trade Composer</h1>
+        <button onClick={exportPack} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #ddd', background:'#fff' }}>Export Zip</button>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <input value={symbol} onChange={e=>setSymbol(e.target.value)} placeholder="Symbol e.g. BTCUSD"

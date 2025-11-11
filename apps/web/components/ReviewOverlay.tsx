@@ -1,8 +1,18 @@
 
 "use client";
-export default function ReviewOverlay({ intent, onClose, onSend, rails }:{ intent:any; onClose:()=>void; onSend:(mode:'test'|'prioritize'|'force', intent:any)=>void; rails:{ slipCapped:boolean; killHigh:boolean } }){
+import { useState } from 'react';
+import ForceShield from './ForceShield';
+
+export default function ReviewOverlay({ intent, onClose, onSend, rails }:{ intent:any; onClose:()=>void; onSend:(mode:'test'|'prioritize'|'force', intent:any, payload?:any)=>void; rails:{ slipCapped:boolean; killHigh:boolean } }){
+  const [shield, setShield] = useState(false);
   if(!intent) return null;
   const forceBlocked = rails.slipCapped || rails.killHigh;
+
+  function forceFlow(){
+    if(forceBlocked) return;
+    setShield(true);
+  }
+
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000 }} onClick={onClose}>
       <div style={{ width:620, background:'#fff', borderRadius:12, padding:16 }} onClick={e=>e.stopPropagation()}>
@@ -18,11 +28,12 @@ export default function ReviewOverlay({ intent, onClose, onSend, rails }:{ inten
           <div style={{ display:'flex', gap:8 }}>
             <button onClick={()=>onSend('test', intent)} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #ddd', background:'#fff' }}>Test</button>
             <button onClick={()=>onSend('prioritize', intent)} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #ddd', background:'#fff' }}>Prioritize</button>
-            <button onClick={()=>!forceBlocked && onSend('force', intent)} disabled={forceBlocked}
+            <button onClick={forceFlow} disabled={forceBlocked}
               style={{ padding:'8px 12px', borderRadius:8, background: forceBlocked? '#9CA3AF':'#111827', color:'#fff' }}>Force</button>
           </div>
         </div>
       </div>
+      <ForceShield open={shield} onCancel={()=>setShield(false)} onConfirm={(reason)=>{ setShield(false); onSend('force', intent, { reason }); }} />
     </div>
   );
 }
